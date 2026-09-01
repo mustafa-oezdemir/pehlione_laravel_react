@@ -36,6 +36,10 @@ class DocumentationController extends Controller
         $restrictedAccess = $allSections->isNotEmpty() && $sections->isEmpty();
 
         if ($sections->isEmpty()) {
+            if ($sectionSlug && $allSections->contains('slug', $sectionSlug)) {
+                abort(403);
+            }
+
             return Inertia::render('docs/index', [
                 'sections' => [],
                 'current' => ['section' => null, 'document' => null],

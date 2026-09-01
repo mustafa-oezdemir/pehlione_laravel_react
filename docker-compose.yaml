@@ -1,0 +1,66 @@
+name: pehlione
+
+services:
+  laravel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PEHLIONE_APP_PORT:-8000}:8000"
+    environment:
+      APP_NAME: Pehlione
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_KEY: "${PEHLIONE_APP_KEY:-base64:cGVobGlvbmUtbG9jYWwtZGV2ZWxvcG1lbnQta2V5ISE=}"
+      APP_URL: "http://localhost:${PEHLIONE_APP_PORT:-8000}"
+      LOG_CHANNEL: stderr
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: "${PEHLIONE_DB_DATABASE:-pehlione}"
+      DB_USERNAME: "${PEHLIONE_DB_USERNAME:-pehlione}"
+      DB_PASSWORD: "${PEHLIONE_DB_PASSWORD:-secret}"
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      MAIL_MAILER: smtp
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      MAIL_ENCRYPTION: ""
+      MAIL_FROM_ADDRESS: hello@pehlione.test
+      MAIL_FROM_NAME: Pehlione
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    ports:
+      - "${PEHLIONE_DB_PORT:-3306}:3306"
+    environment:
+      MYSQL_DATABASE: "${PEHLIONE_DB_DATABASE:-pehlione}"
+      MYSQL_USER: "${PEHLIONE_DB_USERNAME:-pehlione}"
+      MYSQL_PASSWORD: "${PEHLIONE_DB_PASSWORD:-secret}"
+      MYSQL_ROOT_PASSWORD: "${PEHLIONE_DB_ROOT_PASSWORD:-root}"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    restart: unless-stopped
+    ports:
+      - "${PEHLIONE_MAILHOG_SMTP_PORT:-1025}:1025"
+      - "${PEHLIONE_MAILHOG_HTTP_PORT:-8025}:8025"
+
+volumes:
+  mysql-data:
