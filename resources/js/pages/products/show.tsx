@@ -50,6 +50,7 @@ const formatCurrency = (value?: number | null, currency?: string | null) => {
 };
 
 export default function ProductShow({ product }: ProductShowProps) {
+    const defaultSize = product.available_sizes?.[0] ?? null;
     const images = useMemo(() => {
         const references = product.images ?? [];
 
@@ -62,23 +63,24 @@ export default function ProductShow({ product }: ProductShowProps) {
 
     const [activeImageIndex, setActiveImageIndex] = useState(0);
     const [selectedSize, setSelectedSize] = useState<string | null>(
-        product.available_sizes?.[0] ?? null,
+        defaultSize,
     );
 
     const addForm = useForm({
         product_slug: product.slug ?? '',
-        size: product.available_sizes?.[0] ?? null,
+        size: defaultSize,
         quantity: 1,
     });
+    const { setData } = addForm;
 
     useEffect(() => {
-        addForm.setData({
+        setData({
             product_slug: product.slug ?? '',
-            size: product.available_sizes?.[0] ?? null,
+            size: defaultSize,
             quantity: 1,
         });
-        setSelectedSize(product.available_sizes?.[0] ?? null);
-    }, [product.slug, JSON.stringify(product.available_sizes ?? [])]);
+        setSelectedSize(defaultSize);
+    }, [defaultSize, product.slug, setData]);
 
     const handleSizeSelect = (size: string | null) => {
         setSelectedSize(size);

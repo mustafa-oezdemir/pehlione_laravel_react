@@ -251,10 +251,6 @@ function WarehouseActions({ log }: { log: MailLogItem }) {
     const context = log.context ?? {};
     const orderId = context.order_id ?? log.order?.id;
 
-    if (!orderId) {
-        return null;
-    }
-
     const hasBeenPrepared = Boolean(log.order?.prepared_at);
     const hasShipped = Boolean(log.order?.shipped_at);
     const [shipDialogOpen, setShipDialogOpen] = useState(false);
@@ -264,6 +260,10 @@ function WarehouseActions({ log }: { log: MailLogItem }) {
         tracking_number: log.order?.tracking_number ?? '',
         delivery_estimate_at: toDateTimeLocalInput(log.order?.delivery_estimate_at),
     });
+
+    if (!orderId) {
+        return null;
+    }
 
     const preparedAtDisplay = formatDateTime(log.order?.prepared_at);
     const shippedAtDisplay = formatDateTime(log.order?.shipped_at);
