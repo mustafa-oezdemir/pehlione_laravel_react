@@ -50,6 +50,8 @@ On the first start, dependencies are installed in the image, the database is mig
 | Service | URL |
 | --- | --- |
 | Pehlione | http://localhost:8000 |
+| Swagger UI | http://localhost:8000/swagger |
+| OpenAPI YAML | http://localhost:8000/openapi.yaml |
 | MailHog | http://localhost:8025 |
 | MySQL | `localhost:3306` |
 
@@ -159,6 +161,25 @@ docker compose exec laravel php artisan about
 docker compose exec laravel sh docker/test.sh
 ```
 
+## HTTP routes and Swagger
+
+The complete Laravel and Fortify route surface is described by the OpenAPI 3.1 file at [`resources/openapi/openapi.yaml`](resources/openapi/openapi.yaml). With the application running, open `http://localhost:8000/swagger` for Swagger UI or download the raw definition from `http://localhost:8000/openapi.yaml`.
+
+These endpoints use Laravel's cookie-based web session rather than bearer tokens. In Swagger UI, first execute `GET /login` to initialize the session and XSRF cookies, then execute `POST /login` with a seeded account. The UI automatically copies the XSRF cookie into the request header for POST, PATCH, PUT, and DELETE operations. Swagger UI assets are loaded from unpkg, so the interactive page needs internet access; the YAML endpoint remains available offline.
+
+[`request.http`](request.http) is a runnable smoke-test collection for all application, authentication, settings, Fortify, health, and local-storage routes. It is written for the JetBrains HTTP Client:
+
+1. Start the application with `docker compose up --build` or `composer dev`.
+2. Open `request.http` and run requests from top to bottom so the client retains the session cookies.
+3. Adjust the variables at the top when testing existing cart items, orders, mail logs, or storage files. The cart and checkout requests capture `cartItemId` and `orderId` automatically when their setup calls succeed.
+4. Review requests marked `MUTATING` or `DESTRUCTIVE` before running them. The final registration/account-deletion pair uses a disposable timestamped user.
+
+For a machine-verifiable route inventory, run:
+
+```bash
+docker compose exec laravel php artisan route:list
+```
+
 ## Project structure
 
 ```text
@@ -167,9 +188,11 @@ database/            Migrations, factories, and seed data
 resources/js/        Inertia React pages and components
 resources/css/       Tailwind styles
 resources/views/     Blade entry point and email templates
+resources/openapi/   OpenAPI 3.1 route definition
 routes/              Web, authentication, and settings routes
 tests/               Pest feature and unit tests
 docker/              Container startup scripts
+request.http         Session-aware route smoke-test collection
 ```
 
 ## Email testing

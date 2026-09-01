@@ -1,0 +1,419 @@
+### Pehlione route smoke tests
+### JetBrains HTTP Client: run requests one-by-one, or run a section in order.
+### Cookies are retained automatically. Mutating/destructive calls are marked clearly.
+
+@baseUrl = http://localhost:8000
+@email = admin@pehlione.com
+@password = D0cker
+@productSlug = breathe-comfort-ergonomic-chair
+@productSize = M
+@cartItemId = 1
+@orderId = 1
+@mailLogId = 1
+@documentationSection = getting-started
+@documentationDocument = installation
+@storagePath = example.txt
+@resetToken = example-token
+@verificationUserId = 1
+@verificationHash = example-hash
+
+### Health check
+GET {{baseUrl}}/up
+Accept: text/plain
+
+### Swagger UI
+GET {{baseUrl}}/swagger
+Accept: text/html
+
+### OpenAPI document
+GET {{baseUrl}}/openapi.yaml
+Accept: application/yaml
+
+### Home
+GET {{baseUrl}}/
+Accept: text/html
+
+### About
+GET {{baseUrl}}/about
+Accept: text/html
+
+### Connection
+GET {{baseUrl}}/connection
+Accept: text/html
+
+### Product catalogue
+GET {{baseUrl}}/products
+Accept: text/html
+
+### Product detail (slug route binding)
+GET {{baseUrl}}/products/{{productSlug}}
+Accept: text/html
+
+### Public storage route (replace storagePath with an existing storage/app/public file)
+GET {{baseUrl}}/storage/{{storagePath}}
+
+### Registration page
+GET {{baseUrl}}/register
+Accept: text/html
+
+### Login page + initialize the session/XSRF cookie
+GET {{baseUrl}}/login
+Accept: text/html
+
+> {%
+const cookie = response.headers.valuesOf('Set-Cookie')
+    .find((value) => value.startsWith('XSRF-TOKEN='));
+const match = cookie && cookie.match(/^XSRF-TOKEN=([^;]+)/);
+client.test('XSRF cookie is present', function () {
+    client.assert(match, 'The login page did not set XSRF-TOKEN');
+});
+if (match) client.global.set('csrfToken', decodeURIComponent(match[1]));
+%}
+
+### Forgot-password page
+GET {{baseUrl}}/forgot-password
+Accept: text/html
+
+### Send password reset mail (writes a message to MailHog)
+POST {{baseUrl}}/forgot-password
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "email": "{{email}}"
+}
+
+### Reset-password page (an intentionally invalid token only checks route reachability)
+GET {{baseUrl}}/reset-password/{{resetToken}}?email={{email}}
+Accept: text/html
+
+### Reset password (intentionally invalid token; expected 422)
+POST {{baseUrl}}/reset-password
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "token": "example-token",
+  "email": "{{email}}",
+  "password": "Temporary123!",
+  "password_confirmation": "Temporary123!"
+}
+
+### Two-factor challenge page (normally reached after a 2FA login)
+GET {{baseUrl}}/two-factor-challenge
+Accept: text/html
+
+### Two-factor challenge submit (expected 422 without a pending 2FA login)
+POST {{baseUrl}}/two-factor-challenge
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "code": "000000"
+}
+
+### Login as a verified seeded admin
+# @name login
+POST {{baseUrl}}/login
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "remember": false
+}
+
+### Dashboard
+GET {{baseUrl}}/dashboard
+Accept: text/html
+
+### Documentation index
+GET {{baseUrl}}/docs
+Accept: text/html
+
+### Documentation section
+GET {{baseUrl}}/docs/{{documentationSection}}
+Accept: text/html
+
+### Documentation document
+GET {{baseUrl}}/docs/{{documentationSection}}/{{documentationDocument}}
+Accept: text/html
+
+### Cart page as Inertia JSON; captures the first cart item when available
+# @name cart
+GET {{baseUrl}}/cart
+Accept: application/json
+X-Inertia: true
+
+> {%
+if (response.body.props.cart.items.length > 0) {
+    client.global.set('cartItemId', response.body.props.cart.items[0].id);
+}
+%}
+
+### Add a product to the cart
+POST {{baseUrl}}/cart/items
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "product_slug": "{{productSlug}}",
+  "size": "{{productSize}}",
+  "quantity": 1
+}
+
+### Refresh cart and capture cartItemId after adding
+GET {{baseUrl}}/cart
+Accept: application/json
+X-Inertia: true
+
+> {%
+client.test('cart contains at least one item', function () {
+    client.assert(response.body.props.cart.items.length > 0, 'No cart item was returned');
+});
+client.global.set('cartItemId', response.body.props.cart.items[0].id);
+%}
+
+### Update cart item
+PATCH {{baseUrl}}/cart/items/{{cartItemId}}
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "quantity": 2
+}
+
+### Checkout page
+GET {{baseUrl}}/checkout
+Accept: text/html
+
+### Checkout preview
+POST {{baseUrl}}/checkout/preview
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "shipping_address": { "country": "DE" },
+  "discount_code": null
+}
+
+### Create an order; captures orderId from the redirect Location
+# @name checkout
+POST {{baseUrl}}/checkout
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "shipping_address": {
+    "label": "HTTP test",
+    "first_name": "Ada",
+    "last_name": "Lovelace",
+    "line1": "Teststrasse 1",
+    "postal_code": "10115",
+    "city": "Berlin",
+    "country": "DE",
+    "set_as_default_shipping": false
+  },
+  "billing_address": { "same_as_shipping": true },
+  "payment_method": "card",
+  "notes": "Created by request.http"
+}
+
+> {%
+const location = response.headers.valueOf('Location');
+const match = location && location.match(/\/checkout\/confirmation\/(\d+)/);
+if (match) client.global.set('orderId', match[1]);
+%}
+
+### Checkout confirmation
+GET {{baseUrl}}/checkout/confirmation/{{orderId}}
+Accept: text/html
+
+### Mark order prepared (requires a warehouse/admin role and a valid orderId)
+POST {{baseUrl}}/orders/{{orderId}}/prepare
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{}
+
+### Mark order shipped (requires a warehouse/admin role and a prepared order)
+POST {{baseUrl}}/orders/{{orderId}}/ship
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "tracking_number": "HTTP-TEST-{{$timestamp}}"
+}
+
+### Mail activity page
+GET {{baseUrl}}/dashboard/mail
+Accept: text/html
+
+### Mark a mail log as read (replace mailLogId with an existing ID)
+POST {{baseUrl}}/dashboard/mail/{{mailLogId}}/read
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{}
+
+### DESTRUCTIVE: delete a mail log (replace mailLogId with an expendable ID)
+DELETE {{baseUrl}}/dashboard/mail/{{mailLogId}}
+Accept: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+### Settings redirect
+GET {{baseUrl}}/settings
+Accept: text/html
+
+### Profile settings
+GET {{baseUrl}}/settings/profile
+Accept: text/html
+
+### Update profile (keeps the seeded email verified because it is unchanged)
+PATCH {{baseUrl}}/settings/profile
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "name": "Admin",
+  "email": "{{email}}"
+}
+
+### Password settings
+GET {{baseUrl}}/settings/password
+Accept: text/html
+
+### MUTATING: password update route (invalid confirmation leaves credentials unchanged; expected 422)
+PUT {{baseUrl}}/settings/password
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "current_password": "{{password}}",
+  "password": "DoNotChange123!",
+  "password_confirmation": "different-value"
+}
+
+### Appearance settings
+GET {{baseUrl}}/settings/appearance
+Accept: text/html
+
+### Password confirmation page
+GET {{baseUrl}}/user/confirm-password
+Accept: text/html
+
+### Confirm password; unlocks password.confirm protected 2FA routes for this session
+POST {{baseUrl}}/user/confirm-password
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "password": "{{password}}"
+}
+
+### Confirmed-password status
+GET {{baseUrl}}/user/confirmed-password-status
+Accept: application/json
+
+### Two-factor settings page
+GET {{baseUrl}}/settings/two-factor
+Accept: text/html
+
+### MUTATING: enable two-factor authentication
+POST {{baseUrl}}/user/two-factor-authentication
+Accept: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+### Two-factor QR code (available after enable)
+GET {{baseUrl}}/user/two-factor-qr-code
+Accept: application/json
+
+### Two-factor secret key (available after enable)
+GET {{baseUrl}}/user/two-factor-secret-key
+Accept: application/json
+
+### Two-factor recovery codes (available after confirmation)
+GET {{baseUrl}}/user/two-factor-recovery-codes
+Accept: application/json
+
+### Confirm two-factor setup (replace with the authenticator code; 422 for placeholder)
+POST {{baseUrl}}/user/confirmed-two-factor-authentication
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "code": "000000"
+}
+
+### Regenerate two-factor recovery codes (requires confirmed 2FA)
+POST {{baseUrl}}/user/two-factor-recovery-codes
+Accept: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+### MUTATING: disable two-factor authentication (returns account to original state)
+DELETE {{baseUrl}}/user/two-factor-authentication
+Accept: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+### Signed email verification route (intentionally invalid signature; expected 403)
+GET {{baseUrl}}/verify-email/{{verificationUserId}}/{{verificationHash}}?signature=invalid
+Accept: text/html
+
+### Email verification notice (verified seeded user redirects to dashboard)
+GET {{baseUrl}}/verify-email
+Accept: text/html
+
+### Send verification notification (verified seeded user sends nothing)
+POST {{baseUrl}}/email/verification-notification
+Accept: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+### Remove cart item after checkout test (may return 400 if checkout already closed the cart)
+DELETE {{baseUrl}}/cart/items/{{cartItemId}}
+Accept: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+### Logout
+POST {{baseUrl}}/logout
+Accept: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+### Create a disposable user (run after logout; timestamp keeps the email unique)
+# @name registerDisposable
+POST {{baseUrl}}/register
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "name": "HTTP Smoke Test",
+  "email": "http-smoke-{{$timestamp}}@example.test",
+  "password": "Temporary123!",
+  "password_confirmation": "Temporary123!"
+}
+
+### DESTRUCTIVE: delete only the disposable user created immediately above
+DELETE {{baseUrl}}/settings/profile
+Accept: application/json
+Content-Type: application/json
+X-XSRF-TOKEN: {{csrfToken}}
+
+{
+  "password": "Temporary123!"
+}

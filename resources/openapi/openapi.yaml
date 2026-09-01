@@ -1,0 +1,935 @@
+openapi: 3.1.0
+info:
+  title: Pehlione Commerce HTTP API
+  version: 1.0.0
+  description: |
+    OpenAPI description of the Laravel web, authentication, commerce, settings,
+    documentation, and Fortify routes. Most pages return Inertia HTML and use
+    Laravel's session cookie. Start with `GET /login` to obtain the XSRF cookie,
+    then call `POST /login`. Swagger UI copies that cookie into `X-XSRF-TOKEN`
+    for state-changing requests.
+servers:
+  - url: /
+    description: Current application origin
+security: []
+tags:
+  - {name: System, description: 'Health, storage, and API documentation endpoints.'}
+  - {name: Public pages, description: Public Inertia pages.}
+  - {name: Authentication, description: 'Session, registration, password, and email-verification flows.'}
+  - {name: Products, description: Product catalogue pages.}
+  - {name: Documentation, description: Role-aware internal Markdown documentation.}
+  - {name: Cart, description: Active-cart operations.}
+  - {name: Checkout, description: Pricing and checkout flow.}
+  - {name: Orders, description: Warehouse order lifecycle operations.}
+  - {name: Mail, description: Application mail-log operations.}
+  - {name: Settings, description: Authenticated account settings.}
+  - {name: Two-factor authentication, description: Laravel Fortify two-factor flows.}
+
+paths:
+  /up:
+    get:
+      tags: [System]
+      summary: Application health check
+      operationId: healthCheck
+      responses:
+        '200': {$ref: '#/components/responses/TextResponse'}
+  /swagger:
+    get:
+      tags: [System]
+      summary: Swagger UI
+      operationId: swaggerUi
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+  /openapi.yaml:
+    get:
+      tags: [System]
+      summary: OpenAPI definition
+      operationId: openApiDefinition
+      responses:
+        '200':
+          description: OpenAPI YAML document
+          content:
+            application/yaml:
+              schema: {type: string}
+  /storage/{path}:
+    get:
+      tags: [System]
+      summary: Read a public local-storage file
+      operationId: publicStorageFile
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: Stored file}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /:
+    get:
+      tags: [Public pages]
+      summary: Home page
+      operationId: home
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+  /about:
+    get:
+      tags: [Public pages]
+      summary: About page
+      operationId: about
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+  /connection:
+    get:
+      tags: [Public pages]
+      summary: Connection page
+      operationId: connection
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+  /products:
+    get:
+      tags: [Products]
+      summary: Browse active products grouped by category
+      operationId: productsIndex
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+  /products/{product}:
+    get:
+      tags: [Products]
+      summary: View a product by slug
+      operationId: productShow
+      parameters:
+        - $ref: '#/components/parameters/ProductSlug'
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /register:
+    get:
+      tags: [Authentication]
+      summary: Registration page
+      operationId: registrationForm
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    post:
+      tags: [Authentication]
+      summary: Register and sign in a user
+      operationId: register
+      security:
+        - csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RegistrationRequest'}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /login:
+    get:
+      tags: [Authentication]
+      summary: Login page and XSRF-cookie initializer
+      operationId: loginForm
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    post:
+      tags: [Authentication]
+      summary: Create an authenticated session
+      operationId: login
+      security:
+        - csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {description: Too many login attempts}
+  /logout:
+    post:
+      tags: [Authentication]
+      summary: Destroy the authenticated session
+      operationId: logout
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '419': {$ref: '#/components/responses/CsrfError'}
+  /forgot-password:
+    get:
+      tags: [Authentication]
+      summary: Forgot-password page
+      operationId: forgotPasswordForm
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    post:
+      tags: [Authentication]
+      summary: Send a password-reset link
+      operationId: sendPasswordResetLink
+      security:
+        - csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: {type: string, format: email}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /reset-password/{token}:
+    get:
+      tags: [Authentication]
+      summary: Password-reset page
+      operationId: resetPasswordForm
+      parameters:
+        - $ref: '#/components/parameters/ResetToken'
+        - name: email
+          in: query
+          schema: {type: string, format: email}
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /reset-password:
+    post:
+      tags: [Authentication]
+      summary: Reset a password
+      operationId: resetPassword
+      security:
+        - csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResetPasswordRequest'}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /verify-email:
+    get:
+      tags: [Authentication]
+      summary: Email-verification notice
+      operationId: verificationNotice
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /verify-email/{id}/{hash}:
+    get:
+      tags: [Authentication]
+      summary: Verify an email with a signed URL
+      operationId: verifyEmail
+      security:
+        - cookieAuth: []
+      parameters:
+        - {$ref: '#/components/parameters/UserId'}
+        - name: hash
+          in: path
+          required: true
+          schema: {type: string}
+        - name: expires
+          in: query
+          required: true
+          schema: {type: integer}
+        - name: signature
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /email/verification-notification:
+    post:
+      tags: [Authentication]
+      summary: Send a new email-verification notification
+      operationId: sendVerificationNotification
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '429': {description: Too many requests}
+
+  /dashboard:
+    get:
+      tags: [Public pages]
+      summary: Authenticated dashboard
+      operationId: dashboard
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /docs:
+    get:
+      tags: [Documentation]
+      summary: Role-filtered documentation index
+      operationId: docsIndex
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /docs/{section}:
+    get:
+      tags: [Documentation]
+      summary: Documentation section
+      operationId: docsSection
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DocumentationSection'
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /docs/{section}/{document}:
+    get:
+      tags: [Documentation]
+      summary: Documentation document
+      operationId: docsShow
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DocumentationSection'
+        - name: document
+          in: path
+          required: true
+          schema: {type: string, example: installation}
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /cart:
+    get:
+      tags: [Cart]
+      summary: View or create the active cart
+      operationId: cartIndex
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /cart/items:
+    post:
+      tags: [Cart]
+      summary: Add a product to the active cart
+      operationId: cartItemStore
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CartItemStoreRequest'}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /cart/items/{item}:
+    patch:
+      tags: [Cart]
+      summary: Change a cart-item quantity
+      operationId: cartItemUpdate
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CartItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              properties:
+                quantity: {type: integer, minimum: 1, maximum: 50}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    delete:
+      tags: [Cart]
+      summary: Remove a cart item
+      operationId: cartItemDestroy
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/CartItemId'
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '400': {description: Cart is no longer editable}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /checkout:
+    get:
+      tags: [Checkout]
+      summary: Checkout page
+      operationId: checkoutIndex
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    post:
+      tags: [Checkout]
+      summary: Finalize the active cart and create an order
+      operationId: checkoutStore
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CheckoutRequest'}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /checkout/preview:
+    post:
+      tags: [Checkout]
+      summary: Calculate checkout totals
+      operationId: checkoutPreview
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shipping_address]
+              properties:
+                shipping_address:
+                  type: object
+                  required: [country]
+                  properties:
+                    country: {type: string, minLength: 2, maxLength: 2, example: DE}
+                discount_code: {type: [string, 'null'], maxLength: 50}
+      responses:
+        '200':
+          description: Calculated totals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totals: {type: object, additionalProperties: true}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /checkout/confirmation/{order}:
+    get:
+      tags: [Checkout]
+      summary: Order confirmation page
+      operationId: checkoutConfirmation
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /orders/{order}/prepare:
+    post:
+      tags: [Orders]
+      summary: Mark an order as prepared
+      description: Requires an authorized warehouse or management role.
+      operationId: orderPrepare
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /orders/{order}/ship:
+    post:
+      tags: [Orders]
+      summary: Mark a prepared order as shipped
+      description: Requires an authorized warehouse or management role.
+      operationId: orderShip
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tracking_number: {type: string, maxLength: 120}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+
+  /dashboard/mail:
+    get:
+      tags: [Mail]
+      summary: Mail activity page
+      operationId: mailIndex
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /dashboard/mail/{mailLog}/read:
+    post:
+      tags: [Mail]
+      summary: Mark a mail log as read
+      operationId: mailMarkRead
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/MailLogId'
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /dashboard/mail/{mailLog}:
+    delete:
+      tags: [Mail]
+      summary: Delete a mail log
+      operationId: mailDestroy
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/MailLogId'
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /settings:
+    get:
+      tags: [Settings]
+      summary: Redirect to profile settings
+      operationId: settingsRedirect
+      security:
+        - cookieAuth: []
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+  /settings/profile:
+    get:
+      tags: [Settings]
+      summary: Profile settings page
+      operationId: profileEdit
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    patch:
+      tags: [Settings]
+      summary: Update the profile
+      operationId: profileUpdate
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name: {type: string, maxLength: 255}
+                email: {type: string, format: email, maxLength: 255}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    delete:
+      tags: [Settings]
+      summary: Delete the authenticated account
+      operationId: profileDestroy
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: {type: string, format: password}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /settings/password:
+    get:
+      tags: [Settings]
+      summary: Password settings page
+      operationId: passwordEdit
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    put:
+      tags: [Settings]
+      summary: Update the password
+      operationId: passwordUpdate
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PasswordUpdateRequest'}
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {description: Too many requests}
+  /settings/appearance:
+    get:
+      tags: [Settings]
+      summary: Appearance settings page
+      operationId: appearanceEdit
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+
+  /user/confirm-password:
+    get:
+      tags: [Authentication]
+      summary: Password-confirmation page
+      operationId: confirmPasswordForm
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    post:
+      tags: [Authentication]
+      summary: Confirm the current password
+      operationId: confirmPassword
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: {type: string, format: password}
+      responses:
+        '201': {description: Password confirmed}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /user/confirmed-password-status:
+    get:
+      tags: [Authentication]
+      summary: Check recent password-confirmation status
+      operationId: confirmedPasswordStatus
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/JsonResponse'}
+  /settings/two-factor:
+    get:
+      tags: [Two-factor authentication]
+      summary: Two-factor settings page
+      operationId: twoFactorSettings
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /two-factor-challenge:
+    get:
+      tags: [Two-factor authentication]
+      summary: Two-factor login challenge page
+      operationId: twoFactorChallengeForm
+      responses:
+        '200': {$ref: '#/components/responses/HtmlResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    post:
+      tags: [Two-factor authentication]
+      summary: Complete a two-factor login challenge
+      operationId: twoFactorChallenge
+      security:
+        - csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: {type: string, example: '123456'}
+                recovery_code: {type: string}
+              oneOf:
+                - required: [code]
+                - required: [recovery_code]
+      responses:
+        '302': {$ref: '#/components/responses/Redirect'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {description: Too many requests}
+  /user/two-factor-authentication:
+    post:
+      tags: [Two-factor authentication]
+      summary: Enable two-factor authentication
+      operationId: twoFactorEnable
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      responses:
+        '200': {$ref: '#/components/responses/JsonResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    delete:
+      tags: [Two-factor authentication]
+      summary: Disable two-factor authentication
+      operationId: twoFactorDisable
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      responses:
+        '200': {$ref: '#/components/responses/JsonResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /user/confirmed-two-factor-authentication:
+    post:
+      tags: [Two-factor authentication]
+      summary: Confirm two-factor setup
+      operationId: twoFactorConfirm
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, example: '123456'}
+      responses:
+        '200': {$ref: '#/components/responses/JsonResponse'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /user/two-factor-qr-code:
+    get:
+      tags: [Two-factor authentication]
+      summary: Get the two-factor QR code
+      operationId: twoFactorQrCode
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/JsonResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /user/two-factor-secret-key:
+    get:
+      tags: [Two-factor authentication]
+      summary: Get the two-factor secret key
+      operationId: twoFactorSecretKey
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/JsonResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+  /user/two-factor-recovery-codes:
+    get:
+      tags: [Two-factor authentication]
+      summary: Get recovery codes
+      operationId: twoFactorRecoveryCodes
+      security:
+        - cookieAuth: []
+      responses:
+        '200': {$ref: '#/components/responses/JsonResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+    post:
+      tags: [Two-factor authentication]
+      summary: Regenerate recovery codes
+      operationId: twoFactorRegenerateRecoveryCodes
+      security:
+        - cookieAuth: []
+          csrfToken: []
+      responses:
+        '200': {$ref: '#/components/responses/JsonResponse'}
+        '302': {$ref: '#/components/responses/Redirect'}
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: pehlione_session
+      description: Laravel session cookie set after login.
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-XSRF-TOKEN
+      description: Decoded value of the XSRF-TOKEN cookie. Swagger UI fills this automatically.
+  parameters:
+    ProductSlug:
+      name: product
+      in: path
+      required: true
+      schema: {type: string, example: breathe-comfort-ergonomic-chair}
+    CartItemId:
+      name: item
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+    OrderId:
+      name: order
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+    MailLogId:
+      name: mailLog
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+    ResetToken:
+      name: token
+      in: path
+      required: true
+      schema: {type: string}
+    DocumentationSection:
+      name: section
+      in: path
+      required: true
+      schema: {type: string, example: getting-started}
+  schemas:
+    RegistrationRequest:
+      type: object
+      required: [name, email, password, password_confirmation]
+      properties:
+        name: {type: string, maxLength: 255}
+        email: {type: string, format: email, maxLength: 255}
+        password: {type: string, format: password}
+        password_confirmation: {type: string, format: password}
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, format: password}
+        remember: {type: boolean, default: false}
+    ResetPasswordRequest:
+      type: object
+      required: [token, email, password, password_confirmation]
+      properties:
+        token: {type: string}
+        email: {type: string, format: email}
+        password: {type: string, format: password}
+        password_confirmation: {type: string, format: password}
+    PasswordUpdateRequest:
+      type: object
+      required: [current_password, password, password_confirmation]
+      properties:
+        current_password: {type: string, format: password}
+        password: {type: string, format: password}
+        password_confirmation: {type: string, format: password}
+    CartItemStoreRequest:
+      type: object
+      required: [product_slug, quantity]
+      properties:
+        product_slug: {type: string, example: breathe-comfort-ergonomic-chair}
+        quantity: {type: integer, minimum: 1, maximum: 50, default: 1}
+        size: {type: [string, 'null'], maxLength: 50, example: M}
+    AddressInput:
+      type: object
+      properties:
+        id: {type: [integer, 'null']}
+        label: {type: [string, 'null'], maxLength: 100}
+        first_name: {type: string, maxLength: 120}
+        last_name: {type: string, maxLength: 120}
+        company: {type: [string, 'null'], maxLength: 150}
+        line1: {type: string, maxLength: 255}
+        line2: {type: [string, 'null'], maxLength: 255}
+        postal_code: {type: string, maxLength: 32}
+        city: {type: string, maxLength: 120}
+        state: {type: [string, 'null'], maxLength: 120}
+        country: {type: string, minLength: 2, maxLength: 2, example: DE}
+        phone: {type: [string, 'null'], maxLength: 40}
+        set_as_default_shipping: {type: boolean}
+        set_as_default_billing: {type: boolean}
+    CheckoutRequest:
+      type: object
+      required: [shipping_address, billing_address, payment_method]
+      properties:
+        shipping_address: {$ref: '#/components/schemas/AddressInput'}
+        billing_address:
+          allOf:
+            - {$ref: '#/components/schemas/AddressInput'}
+            - type: object
+              properties:
+                same_as_shipping: {type: boolean, default: true}
+        payment_method:
+          type: string
+          enum: [paypal, card, klarna, sofort]
+        discount_code: {type: [string, 'null'], maxLength: 50}
+        notes: {type: [string, 'null'], maxLength: 2000}
+    ValidationErrors:
+      type: object
+      properties:
+        message: {type: string}
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: {type: string}
+  responses:
+    HtmlResponse:
+      description: Inertia HTML page
+      content:
+        text/html:
+          schema: {type: string}
+    TextResponse:
+      description: Plain-text response
+      content:
+        text/plain:
+          schema: {type: string}
+    JsonResponse:
+      description: JSON response
+      content:
+        application/json:
+          schema: {type: object, additionalProperties: true}
+    Redirect:
+      description: Redirect response
+      headers:
+        Location:
+          schema: {type: string, format: uri-reference}
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ValidationErrors'}
+    CsrfError:
+      description: CSRF token mismatch
+    Forbidden:
+      description: Authenticated user is not allowed to access the resource
+    NotFound:
+      description: Resource not found

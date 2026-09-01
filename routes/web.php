@@ -12,6 +12,12 @@ use App\Models\Product;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+Route::view('/swagger', 'swagger')->name('swagger');
+Route::get('/openapi.yaml', fn () => response()->file(
+    resource_path('openapi/openapi.yaml'),
+    ['Content-Type' => 'application/yaml; charset=UTF-8']
+))->name('openapi');
+
 Route::get('/', function () {
     return Inertia::render('home');
 })->name('home');
